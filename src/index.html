@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Hello Electron React!</title>
+    <title>电路分析</title>
     <script>
       (() => {
         if (process?.env?.NODE_ENV !== 'development') {
@@ -15,8 +15,24 @@
       })();
     </script>
   </head>
+  <link rel="stylesheet" href="https://at.alicdn.com/t/font_2368686_xxj36cqh2uc.css">
+  <style>
+    @font-face {
+      font-family: 'ailifont';
+      font-display: swap;
+      src: url('https://at.alicdn.com/t/webfont_7b059wao0pb.eot'); /* IE9*/
+      src: url('https://at.alicdn.com/t/webfont_7b059wao0pb.eot?#iefix') format('embedded-opentype'), /* IE6-IE8 */
+      url('https://at.alicdn.com/t/webfont_7b059wao0pb.woff2') format('woff2'),
+      url('https://at.alicdn.com/t/webfont_7b059wao0pb.woff') format('woff'), /* chrome、firefox */
+      url('https://at.alicdn.com/t/webfont_7b059wao0pb.ttf') format('truetype'), /* chrome、firefox、opera、Safari, Android, iOS 4.2+*/
+      url('https://at.alicdn.com/t/webfont_7b059wao0pb.svg#NotoSansHans-DemiLight') format('svg'); /* iOS 4.1- */
+    }
+    *{
+      font-family: 'ailifont';
+    }
+  </style>
   <body>
-    <div id="root"></div>
+    <div class="bp3-focus-disabled" id="root"></div>
     <script>
       const scripts = [];
 
