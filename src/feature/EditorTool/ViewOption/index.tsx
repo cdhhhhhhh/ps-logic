@@ -1,11 +1,11 @@
-import { Button, Divider } from '@blueprintjs/core';
+import { Divider } from '@blueprintjs/core';
 import React from 'react';
-import { Select } from '@blueprintjs/select';
+// import { Select } from '@blueprintjs/select';
 
-const PeriodSelect = Select.ofType<{ name: number }>();
+// const PeriodSelect = Select.ofType<{ name: number }>();
 // const FrequencySelect = Select.ofType<number>();
 
-const PeriodSelectList = [{ name: 1 }, { name: 2 }, { name: 3 }, { name: 4 }];
+// const PeriodSelectList = [{ name: 1 }, { name: 2 }, { name: 3 }, { name: 4 }];
 
 const OptionList = [
   [

@@ -1,6 +1,6 @@
 import ChartStore from './chart';
 
-class RootStore {
+export class RootStore {
   chartStore: ChartStore;
 
   constructor() {

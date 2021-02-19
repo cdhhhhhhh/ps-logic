@@ -1,4 +1,4 @@
-import { Checkbox, Collapse, Divider, Icon, Tag } from '@blueprintjs/core';
+import { Checkbox, Collapse, Icon } from '@blueprintjs/core';
 import React, { useState } from 'react';
 
 const MeasureConfig = () => {

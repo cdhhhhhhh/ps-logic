@@ -1,13 +1,15 @@
 import { makeObservable, observable, action } from 'mobx';
 
+export type MarkList = { time: number; value: number };
+export type RangeListItem = { start: number; end: number; index: number };
 class ChartStore {
-  markList: Array<number> = [];
+  markList: Array<MarkList> = [];
 
-  rangeList: Array<[number, number]> = [];
+  rangeList: Array<RangeListItem> = [];
 
   rootStore;
 
-  constructor(rootStore) {
+  constructor(rootStore: any) {
     this.rootStore = rootStore;
     makeObservable(this, {
       markList: observable,
@@ -15,11 +17,11 @@ class ChartStore {
     });
   }
 
-  addMarkList(data: number) {
+  addMarkList(data: MarkList) {
     this.markList.push(data);
   }
 
-  addRange(data: [number, number]) {
+  addRange(data: RangeListItem) {
     this.rangeList.push(data);
   }
 }
