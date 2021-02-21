@@ -2,10 +2,9 @@ import React, { useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { useMount } from 'ahooks';
 import { observer } from 'mobx-react-lite';
+import { subtract, format, bignumber } from 'mathjs';
 import ChartStore from '../../store/chart';
 import rootStore from '../../store';
-
-type LineType = { date: number; value: number };
 
 async function getDataCVS(): Promise<
   Array<{
@@ -20,6 +19,53 @@ async function getDataCVS(): Promise<
     return [];
   }
 }
+function getDigit(n: number): number {
+  if (n.toString().split('.').length > 1) {
+    return n.toString().split('.')[1].length;
+  }
+  return 0;
+}
+function secondFormat(
+  value: number,
+  fromFormat: 'ms' | 'us' | 'ns' | 's',
+  toFormat: 'ms' | 'us' | 'ns' | 's'
+): number {
+  const list = ['s', 'ms', 'us', 'ns'];
+  const fromIndex = list.findIndex((i) => fromFormat === i);
+  const toIndex = list.findIndex((i) => toFormat === i);
+  return toIndex - fromIndex > 0
+    ? Number(format(value * 1000 ** (toIndex - fromIndex ),{precision: 14}))
+    : value / 1000 ** (fromIndex - toIndex);
+}
+
+function axisFormatSecondMain(n: number): string {
+  const num = getDigit(n);
+  if (num >= 1 && num <= 3) {
+    return `0s : ${secondFormat(n, 's', 'ms')}ms`;
+  }
+  if (num > 3) {
+    const ms = Number.parseInt(secondFormat(n, 's', 'ms').toString(), 10);
+    if (ms === 0) {
+      const us = secondFormat(n, 's', 'us');
+      return `0s : 0ms : ${us}us`;
+    }
+    const us = secondFormat(n, 's', 'us') - secondFormat(ms, 'ms', 'us');
+    return `0s : ${ms}ms : ${us}us`;
+  }
+  return '0 s';
+}
+function axisFormatSecondSubordination(n: number, index: number): string {
+  const num = getDigit(n);
+  if (num > 1 && num <= 4) {
+    const ms = secondFormat(n, 's', 'ms').toString().slice(index);
+    return `${ms}ms`;
+  }
+  if (num > 4) {
+    const us = secondFormat(n, 's', 'us').toString().slice(index);
+    return `${us}us`;
+  }
+  return '0';
+}
 
 async function renderView({ width, setMarkLineList, chartStore }) {
   // 基本配置
@@ -33,25 +79,55 @@ async function renderView({ width, setMarkLineList, chartStore }) {
     .range([0, width])
     .domain([data[0]['Time [s]'], maxAxisX]);
   const yscale = d3.scaleLinear().range([0, chartHeight]).domain([0, 1]);
-
-  const axisX = (x: any) => {
+  let currentScale = xscale;
+  const zoomToPx = {
+    value: (secondFormat(1, 's', 'ms') / width) * 100,
+    format: 'ms',
+  };
+  const axisX = () => {
+    const [start, end] = currentScale.ticks();
+    // const currentDigit = getDigit(
+    //   format(subtract(bignumber(end), bignumber(start)), {
+    //     precision: 14,
+    //   })
+    // );
+    const currentDigit = d3.max([getDigit(start), getDigit(end)]);
+    if (currentDigit > 1) {
+      return d3
+        .axisTop(currentScale)
+        .tickFormat((i) => {
+          if (getDigit(i) !== currentDigit) {
+            return axisFormatSecondMain(i);
+          }
+          return axisFormatSecondSubordination(i, currentDigit - 1);
+        })
+        .tickSizeOuter(0);
+    }
+    // if (getDigit(end - start))
     return d3
-      .axisTop(x)
-      .ticks(width / 80)
+      .axisTop(currentScale)
+      .tickFormat((i) => {
+        return `${i}s`;
+      })
       .tickSizeOuter(0);
   };
   const zoom = d3
-    .zoom<SVGElement, LineType>()
-    .scaleExtent([1, data.length])
+    .zoom<SVGElement, any>()
+    .scaleExtent([1, 10 ** 6])
     .translateExtent([
       [0, -Infinity],
       [width, Infinity],
-    ]);
+    ])
+    .wheelDelta((event) => {
+      return (
+        -event.deltaY *
+        (event.deltaMode === 1 ? 0.1 : event.deltaMode ? 1 : 0.06)
+      );
+    });
   const brush = d3.brushX().extent([
     [0, 0],
     [width, 200],
   ]);
-  let currentScale = xscale;
 
   // DOM元素绑定顺序
   const mainView = d3.select('#svg');
@@ -125,9 +201,6 @@ async function renderView({ width, setMarkLineList, chartStore }) {
         if (brushIng.state) {
           brushIng.rect.attr('width', clientX - brushIng.start);
         }
-      })
-      .on('mouseup', () => {
-        console.log('test');
       });
     const path = chartViewLine
       .append('path')
@@ -209,6 +282,9 @@ async function renderView({ width, setMarkLineList, chartStore }) {
       .attr('transform', `translate(${0},${15})`);
     zoom.on('zoom', (event) => {
       currentScale = event.transform.rescaleX(xscale);
+      const [start, end] = currentScale.domain();
+      // console.log((secondFormat(end - start, 's', 's') / width) * 100);
+      // console.log(end - start);
       update();
     });
 

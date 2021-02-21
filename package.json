@@ -256,6 +256,7 @@
     "electron-log": "^4.2.4",
     "electron-updater": "^4.3.4",
     "history": "^5.0.0",
+    "mathjs": "^9.2.0",
     "mobx": "^6.1.6",
     "mobx-react-lite": "^3.2.0",
     "react": "^17.0.1",
