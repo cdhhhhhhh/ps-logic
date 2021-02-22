@@ -25,6 +25,27 @@ function getDigit(n: number): number {
   }
   return 0;
 }
+function getArrIndex(
+  arr: Array<any>,
+  start: number,
+  value: number,
+  fun: any,
+  direction: 'left' | 'right'
+): number {
+  const index = NaN;
+  let startIndex = start;
+  while (arr[startIndex]) {
+    if (fun(arr[startIndex]) === value) {
+      return startIndex;
+    }
+    if (direction === 'left') {
+      startIndex -= 1;
+    } else {
+      startIndex += 1;
+    }
+  }
+  return index;
+}
 function secondFormat(
   value: number,
   fromFormat: 'ms' | 'us' | 'ns' | 's',
@@ -34,7 +55,7 @@ function secondFormat(
   const fromIndex = list.findIndex((i) => fromFormat === i);
   const toIndex = list.findIndex((i) => toFormat === i);
   return toIndex - fromIndex > 0
-    ? Number(format(value * 1000 ** (toIndex - fromIndex ),{precision: 14}))
+    ? Number(format(value * 1000 ** (toIndex - fromIndex), { precision: 14 }))
     : value / 1000 ** (fromIndex - toIndex);
 }
 
@@ -52,6 +73,7 @@ function axisFormatSecondMain(n: number): string {
     const us = secondFormat(n, 's', 'us') - secondFormat(ms, 'ms', 'us');
     return `0s : ${ms}ms : ${us}us`;
   }
+
   return '0 s';
 }
 function axisFormatSecondSubordination(n: number, index: number): string {
@@ -131,6 +153,7 @@ async function renderView({ width, setMarkLineList, chartStore }) {
 
   // DOM元素绑定顺序
   const mainView = d3.select('#svg');
+
   let axisXView = mainView
     .append('svg')
     .attr('id', 'axisSvg')
@@ -156,11 +179,23 @@ async function renderView({ width, setMarkLineList, chartStore }) {
       rect: undefined,
       startSvg: undefined,
     };
+
     const chartViewLine = chartView
       .append('svg')
       .attr('class', 'mt-3')
       .attr('width', width)
-      .attr('height', chartHeight)
+      .attr('height', chartHeight);
+
+    const currentPeriodLine = chartViewLine.append('line');
+    const currentNextPeriodLine = chartViewLine.append('line');
+
+    const line = d3
+      .line<any>()
+      .curve(d3.curveStepBefore)
+      .defined((d) => !Number.isNaN(d.value))
+      .x((d) => currentScale(d['Time [s]']))
+      .y((d) => yscale(d[key]));
+    chartViewLine
       .on('click', (event) => {
         // 不支持负数
         if (brushIng.state) {
@@ -200,6 +235,48 @@ async function renderView({ width, setMarkLineList, chartStore }) {
         const { clientX } = event;
         if (brushIng.state) {
           brushIng.rect.attr('width', clientX - brushIng.start);
+        } else {
+          // 展示当前坐标属性
+          const bisectDate = d3.bisector((d) => {
+            return d['Time [s]'];
+          }).right;
+          const index = bisectDate(data, currentScale.invert(clientX));
+          const startIndex = getArrIndex(
+            data,
+            index,
+            data[index]['Channel 0'] === 1 ? 0 : 1,
+            (value) => value['Channel 0'],
+            'left'
+          );
+          const endIndex = getArrIndex(
+            data,
+            index,
+            data[index]['Channel 0'] === 1 ? 0 : 1,
+            (value) => value['Channel 0'],
+            'right'
+          );
+          const nextIndex = getArrIndex(
+            data,
+            endIndex,
+            data[endIndex]['Channel 0'] === 1 ? 0 : 1,
+            (value) => value['Channel 0'],
+            'right'
+          )
+          // 添加显示当前周期
+          currentPeriodLine
+            .attr('x1', currentScale(data[startIndex]['Time [s]']))
+            .attr('y1', '10')
+            .attr('x2', currentScale(data[endIndex - 1]['Time [s]']))
+            .attr('y2', '10')
+            .attr('stroke', 'black')
+            .attr('stroke-width', '1');
+          currentNextPeriodLine
+            .attr('x1', currentScale(data[startIndex]['Time [s]']))
+            .attr('y1', '40')
+            .attr('x2', currentScale(data[nextIndex - 1]['Time [s]']))
+            .attr('y2', '40')
+            .attr('stroke', 'black')
+            .attr('stroke-width', '1');
         }
       });
     const path = chartViewLine
@@ -214,15 +291,7 @@ async function renderView({ width, setMarkLineList, chartStore }) {
     return {
       view: chartViewLine,
       update: () => {
-        return path.attr(
-          'd',
-          d3
-            .line<any>()
-            .curve(d3.curveStep)
-            .defined((d) => !Number.isNaN(d.value))
-            .x((d) => currentScale(d['Time [s]']))
-            .y((d) => yscale(d[key]))
-        );
+        return path.attr('d', line);
       },
     };
   };
