@@ -60,30 +60,62 @@ function secondFormat(
 }
 
 function axisFormatSecondMain(n: number): string {
-  const num = getDigit(n);
+  const num = getDigit(Math.abs(n));
   if (num >= 1 && num <= 3) {
-    return `0s : ${secondFormat(n, 's', 'ms')}ms`;
+    return `${n > 0 ? '' : '-'}${Number.parseInt(
+      n.toString(),
+      10
+    )}s : ${secondFormat(
+      Math.abs(Number.parseInt(n.toString(), 10) - n),
+      's',
+      'ms'
+    )}ms`;
   }
   if (num > 3) {
-    const ms = Number.parseInt(secondFormat(n, 's', 'ms').toString(), 10);
+    const ms = Number.parseInt(
+      secondFormat(
+        Math.abs(Number.parseInt(n.toString(), 10) - n),
+        's',
+        'ms'
+      ).toString(),
+      10
+    );
+    let us =
+      secondFormat(Math.abs(n), 's', 'us') -
+      secondFormat(ms, 'ms', 'us') -
+      secondFormat(Math.abs(Number.parseInt(n.toString(), 10)), 's', 'us');
     if (ms === 0) {
-      const us = secondFormat(n, 's', 'us');
-      return `0s : 0ms : ${us}us`;
+      us = secondFormat(Math.abs(n), 's', 'us');
     }
-    const us = secondFormat(n, 's', 'us') - secondFormat(ms, 'ms', 'us');
-    return `0s : ${ms}ms : ${us}us`;
+
+    return `${n > 0 ? '' : '-'}${Number.parseInt(
+      n.toString(),
+      10
+    )}s : ${ms}ms : ${us}us`;
   }
 
   return '0 s';
 }
 function axisFormatSecondSubordination(n: number, index: number): string {
-  const num = getDigit(n);
+  const num = getDigit(Math.abs(n));
   if (num > 1 && num <= 4) {
-    const ms = secondFormat(n, 's', 'ms').toString().slice(index);
+    const ms = secondFormat(
+      Math.abs(Number.parseInt(n.toString(), 10) - n),
+      's',
+      'ms'
+    )
+      .toString()
+      .slice(index);
     return `${ms}ms`;
   }
   if (num > 4) {
-    const us = secondFormat(n, 's', 'us').toString().slice(index);
+    const us = secondFormat(
+      Math.abs(Number.parseInt(n.toString(), 10) - n),
+      's',
+      'us'
+    )
+      .toString()
+      .slice(index);
     return `${us}us`;
   }
   return '0';
@@ -95,11 +127,14 @@ async function renderView({ width, setMarkLineList, chartStore }) {
   const data = await getDataCVS();
   let currentRangeList: Array<any> = [];
   let chartViewList: Array<{ view: any; update: any }> = [];
-  const maxAxisX = data[data.length - 1]['Time [s]'];
   const xscale = d3
     .scaleLinear()
     .range([0, width])
-    .domain([data[0]['Time [s]'], maxAxisX]);
+    .domain([data[0]['Time [s]'], data[data.length - 1]['Time [s]']]);
+  const maxAxisX = xscale
+    .domain()
+    .map(Math.abs)
+    .reduce((a, b) => a + b);
   const yscale = d3.scaleLinear().range([0, chartHeight]).domain([0, 1]);
   let currentScale = xscale;
   const zoomToPx = {
@@ -112,6 +147,7 @@ async function renderView({ width, setMarkLineList, chartStore }) {
   let realBrush: [number, number] = [0, width];
   const axisX = () => {
     const [start, end] = currentScale.ticks();
+    console.log(currentScale.ticks());
     // const currentDigit = getDigit(
     //   format(subtract(bignumber(end), bignumber(start)), {
     //     precision: 14,
@@ -141,7 +177,7 @@ async function renderView({ width, setMarkLineList, chartStore }) {
     .zoom<SVGElement, any>()
     .scaleExtent([1, 10 ** 6])
     .translateExtent([
-      [0, -Infinity],
+      [0, 0],
       [width, Infinity],
     ])
     .wheelDelta((event) => {
@@ -259,14 +295,17 @@ async function renderView({ width, setMarkLineList, chartStore }) {
             (value) => value['Channel 0'],
             'right'
           );
-          currentPeriodLine
-            .attr('x1', currentScale(data[startIndex]['Time [s]']))
-            .attr('y1', '10')
-            .attr('x2', currentScale(data[endIndex - 1]['Time [s]']))
-            .attr('y2', '10')
-            .attr('stroke', 'black')
-            .attr('stroke-width', '1');
-          if (data[endIndex]['Channel 0']) {
+          if (data[endIndex - 1]) {
+            currentPeriodLine
+              .attr('x1', currentScale(data[startIndex]['Time [s]']))
+              .attr('y1', '10')
+              .attr('x2', currentScale(data[endIndex - 1]['Time [s]']))
+              .attr('y2', '10')
+              .attr('stroke', 'black')
+              .attr('stroke-width', '1');
+          }
+
+          if (data[endIndex] && data[endIndex]['Channel 0']) {
             const nextIndex = getArrIndex(
               data,
               endIndex,
@@ -351,10 +390,9 @@ async function renderView({ width, setMarkLineList, chartStore }) {
         realBrush[0] - (brushMinWidth - num) / 2,
         realBrush[1] + (brushMinWidth - num) / 2,
       ];
-      console.log(currentBrush);
-      if (currentBrush[1] > width) {
+      if (currentBrush[1] >= width) {
         brushView.call(brush.move, [width - brushMinWidth, width]);
-      } else if (currentBrush[0] > width) {
+      } else if (currentBrush[0] <= 0) {
         brushView.call(brush.move, [0, brushMinWidth]);
       } else {
         brushView.call(brush.move, [currentBrush[0], currentBrush[1]]);
@@ -388,17 +426,24 @@ async function renderView({ width, setMarkLineList, chartStore }) {
       update();
     });
 
-    brush.on('brush end', (event) => {
+    brush.on('brush', (event) => {
       // 保证不是联动的影像
-      if (event.selection && event.sourceEvent) {
-        const s = event.selection;
+      const s = event.selection;
+      if (s && event.sourceEvent) {
         if (realBrush[1] - realBrush[0] > brushMinWidth) {
-          mainView.call(
+          chartView.call(
             zoom.transform,
             d3.zoomIdentity.scale(width / (s[1] - s[0])).translate(-s[0], 0)
           );
+        } else if (s[1] === width) {
+          chartView.call(
+            zoom.transform,
+            d3.zoomIdentity
+              .scale(width / (realBrush[1] - realBrush[0]))
+              .translate(-(width - (realBrush[1] - realBrush[0])), 0)
+          );
         } else {
-          mainView.call(
+          chartView.call(
             zoom.transform,
             d3.zoomIdentity
               .scale(width / (realBrush[1] - realBrush[0]))
