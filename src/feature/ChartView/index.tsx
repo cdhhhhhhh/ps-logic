@@ -106,6 +106,10 @@ async function renderView({ width, setMarkLineList, chartStore }) {
     value: (secondFormat(1, 's', 'ms') / width) * 100,
     format: 'ms',
   };
+  let zoomToPxSecond = 1 / width;
+  const brushMinWidth = 30;
+  const brushHeight = 10;
+  let realBrush: [number, number] = [0, width];
   const axisX = () => {
     const [start, end] = currentScale.ticks();
     // const currentDigit = getDigit(
@@ -255,14 +259,6 @@ async function renderView({ width, setMarkLineList, chartStore }) {
             (value) => value['Channel 0'],
             'right'
           );
-          const nextIndex = getArrIndex(
-            data,
-            endIndex,
-            data[endIndex]['Channel 0'] === 1 ? 0 : 1,
-            (value) => value['Channel 0'],
-            'right'
-          )
-          // 添加显示当前周期
           currentPeriodLine
             .attr('x1', currentScale(data[startIndex]['Time [s]']))
             .attr('y1', '10')
@@ -270,13 +266,28 @@ async function renderView({ width, setMarkLineList, chartStore }) {
             .attr('y2', '10')
             .attr('stroke', 'black')
             .attr('stroke-width', '1');
-          currentNextPeriodLine
-            .attr('x1', currentScale(data[startIndex]['Time [s]']))
-            .attr('y1', '40')
-            .attr('x2', currentScale(data[nextIndex - 1]['Time [s]']))
-            .attr('y2', '40')
-            .attr('stroke', 'black')
-            .attr('stroke-width', '1');
+          if (data[endIndex]['Channel 0']) {
+            const nextIndex = getArrIndex(
+              data,
+              endIndex,
+              data[endIndex]['Channel 0'] === 1 ? 0 : 1,
+              (value) => value['Channel 0'],
+              'right'
+            );
+            currentNextPeriodLine
+              .attr('x1', currentScale(data[startIndex]['Time [s]']))
+              .attr('y1', '40')
+              .attr('x2', currentScale(data[nextIndex - 1]['Time [s]']))
+              .attr('y2', '40')
+              .attr('stroke', 'black')
+              .attr('stroke-width', '1');
+          } else {
+            currentNextPeriodLine
+              .attr('x1', '0')
+              .attr('y1', '0')
+              .attr('x2', '0')
+              .attr('y2', '0');
+          }
         }
       });
     const path = chartViewLine
@@ -321,14 +332,35 @@ async function renderView({ width, setMarkLineList, chartStore }) {
     });
   };
   const update = () => {
-    axisXView.call(axisX(currentScale));
+    axisXView.call(axisX());
     chartViewList.forEach((chartViewItem) => {
       chartViewItem.update();
     });
-    brushView.call(brush.move, [
-      (width * currentScale.domain()[0]) / maxAxisX,
-      (width * currentScale.domain()[1]) / maxAxisX,
-    ]);
+    realBrush = [
+      width * (currentScale.domain()[0] / maxAxisX),
+      width * (currentScale.domain()[1] / maxAxisX),
+    ];
+    if (realBrush[1] - realBrush[0] > brushMinWidth) {
+      brushView.call(brush.move, [
+        width * (currentScale.domain()[0] / maxAxisX),
+        width * (currentScale.domain()[1] / maxAxisX),
+      ]);
+    } else {
+      const num = realBrush[1] - realBrush[0];
+      const currentBrush = [
+        realBrush[0] - (brushMinWidth - num) / 2,
+        realBrush[1] + (brushMinWidth - num) / 2,
+      ];
+      console.log(currentBrush);
+      if (currentBrush[1] > width) {
+        brushView.call(brush.move, [width - brushMinWidth, width]);
+      } else if (currentBrush[0] > width) {
+        brushView.call(brush.move, [0, brushMinWidth]);
+      } else {
+        brushView.call(brush.move, [currentBrush[0], currentBrush[1]]);
+      }
+    }
+
     updateMark();
     updateRange();
   };
@@ -351,19 +383,28 @@ async function renderView({ width, setMarkLineList, chartStore }) {
       .attr('transform', `translate(${0},${15})`);
     zoom.on('zoom', (event) => {
       currentScale = event.transform.rescaleX(xscale);
-      const [start, end] = currentScale.domain();
-      // console.log((secondFormat(end - start, 's', 's') / width) * 100);
-      // console.log(end - start);
+      zoomToPxSecond =
+        (currentScale.domain()[1] - currentScale.domain()[0]) / width;
       update();
     });
 
     brush.on('brush end', (event) => {
+      // 保证不是联动的影像
       if (event.selection && event.sourceEvent) {
         const s = event.selection;
-        mainView.call(
-          zoom.transform,
-          d3.zoomIdentity.scale(width / (s[1] - s[0])).translate(-s[0], 0)
-        );
+        if (realBrush[1] - realBrush[0] > brushMinWidth) {
+          mainView.call(
+            zoom.transform,
+            d3.zoomIdentity.scale(width / (s[1] - s[0])).translate(-s[0], 0)
+          );
+        } else {
+          mainView.call(
+            zoom.transform,
+            d3.zoomIdentity
+              .scale(width / (realBrush[1] - realBrush[0]))
+              .translate(-s[0], 0)
+          );
+        }
       }
     });
 
@@ -382,7 +423,6 @@ const ChartRenderView: React.FC<{
   useMount(() => {
     const wrapper = ref.current;
     if (wrapper) {
-      // create(wrapper.clientWidth);
       renderView({ width: wrapper.clientWidth, setMarkLineList, chartStore })
         .then()
         .catch();
