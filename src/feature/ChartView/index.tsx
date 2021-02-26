@@ -2,128 +2,26 @@ import React, { useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { useMount } from 'ahooks';
 import { observer } from 'mobx-react-lite';
-import { subtract, format, bignumber } from 'mathjs';
 import ChartStore from '../../store/chart';
 import rootStore from '../../store';
-
-async function getDataCVS(): Promise<
-  Array<{
-    [index: string]: number;
-  }>
-> {
-  try {
-    return await d3.csv<{
-      [index: string]: number;
-    }>('mock/digital.csv', d3.autoType);
-  } catch (e) {
-    return [];
-  }
-}
-function getDigit(n: number): number {
-  if (n.toString().split('.').length > 1) {
-    return n.toString().split('.')[1].length;
-  }
-  return 0;
-}
-function getArrIndex(
-  arr: Array<any>,
-  start: number,
-  value: number,
-  fun: any,
-  direction: 'left' | 'right'
-): number {
-  const index = NaN;
-  let startIndex = start;
-  while (arr[startIndex]) {
-    if (fun(arr[startIndex]) === value) {
-      return startIndex;
-    }
-    if (direction === 'left') {
-      startIndex -= 1;
-    } else {
-      startIndex += 1;
-    }
-  }
-  return index;
-}
-function secondFormat(
-  value: number,
-  fromFormat: 'ms' | 'us' | 'ns' | 's',
-  toFormat: 'ms' | 'us' | 'ns' | 's'
-): number {
-  const list = ['s', 'ms', 'us', 'ns'];
-  const fromIndex = list.findIndex((i) => fromFormat === i);
-  const toIndex = list.findIndex((i) => toFormat === i);
-  return toIndex - fromIndex > 0
-    ? Number(format(value * 1000 ** (toIndex - fromIndex), { precision: 14 }))
-    : value / 1000 ** (fromIndex - toIndex);
-}
-
-function axisFormatSecondMain(n: number): string {
-  const num = getDigit(Math.abs(n));
-  if (num >= 1 && num <= 3) {
-    return `${n > 0 ? '' : '-'}${Number.parseInt(
-      n.toString(),
-      10
-    )}s : ${secondFormat(
-      Math.abs(Number.parseInt(n.toString(), 10) - n),
-      's',
-      'ms'
-    )}ms`;
-  }
-  if (num > 3) {
-    const ms = Number.parseInt(
-      secondFormat(
-        Math.abs(Number.parseInt(n.toString(), 10) - n),
-        's',
-        'ms'
-      ).toString(),
-      10
-    );
-    let us =
-      secondFormat(Math.abs(n), 's', 'us') -
-      secondFormat(ms, 'ms', 'us') -
-      secondFormat(Math.abs(Number.parseInt(n.toString(), 10)), 's', 'us');
-    if (ms === 0) {
-      us = secondFormat(Math.abs(n), 's', 'us');
-    }
-
-    return `${n > 0 ? '' : '-'}${Number.parseInt(
-      n.toString(),
-      10
-    )}s : ${ms}ms : ${us}us`;
-  }
-
-  return '0 s';
-}
-function axisFormatSecondSubordination(n: number, index: number): string {
-  const num = getDigit(Math.abs(n));
-  if (num > 1 && num <= 4) {
-    const ms = secondFormat(
-      Math.abs(Number.parseInt(n.toString(), 10) - n),
-      's',
-      'ms'
-    )
-      .toString()
-      .slice(index);
-    return `${ms}ms`;
-  }
-  if (num > 4) {
-    const us = secondFormat(
-      Math.abs(Number.parseInt(n.toString(), 10) - n),
-      's',
-      'us'
-    )
-      .toString()
-      .slice(index);
-    return `${us}us`;
-  }
-  return '0';
-}
+import {
+  axisFormatSecondMain,
+  axisFormatSecondSubordination,
+  getArrIndex,
+  getDataCVS,
+  getDigit,
+  secondFormat,
+} from '../../utils/axis';
 
 async function renderView({ width, setMarkLineList, chartStore }) {
   // 基本配置
   const chartHeight = 100;
+  let zoomToPxSecond = 1 / width;
+  let chartInfoLeftWidth = 100;
+  let chartWidth = width - chartInfoLeftWidth;
+
+  const brushMinWidth = 30;
+  const brushHeight = 30;
   const data = await getDataCVS();
   let currentRangeList: Array<any> = [];
   let chartViewList: Array<{ view: any; update: any }> = [];
@@ -141,13 +39,10 @@ async function renderView({ width, setMarkLineList, chartStore }) {
     value: (secondFormat(1, 's', 'ms') / width) * 100,
     format: 'ms',
   };
-  let zoomToPxSecond = 1 / width;
-  const brushMinWidth = 30;
-  const brushHeight = 10;
+
   let realBrush: [number, number] = [0, width];
   const axisX = () => {
     const [start, end] = currentScale.ticks();
-    console.log(currentScale.ticks());
     // const currentDigit = getDigit(
     //   format(subtract(bignumber(end), bignumber(start)), {
     //     precision: 14,
@@ -165,7 +60,6 @@ async function renderView({ width, setMarkLineList, chartStore }) {
         })
         .tickSizeOuter(0);
     }
-    // if (getDigit(end - start))
     return d3
       .axisTop(currentScale)
       .tickFormat((i) => {
@@ -197,14 +91,22 @@ async function renderView({ width, setMarkLineList, chartStore }) {
   let axisXView = mainView
     .append('svg')
     .attr('id', 'axisSvg')
+    .attr('class', 'top-0 sticky')
     .attr('width', width)
     .attr('height', 20);
-
+  const gridView = d3
+    .select('#svg-container')
+    .append('svg')
+    .attr('class', 'absolute top-0')
+    .attr('style', 'z-index:-999')
+    .attr('width', width)
+    .attr('height', 900);
   const chartView = d3.select('#svg').append('div');
   const brushView = mainView
     .append('svg')
     .attr('width', width)
-    .attr('height', 100)
+    .attr('height', brushHeight)
+    .attr('class', 'sticky bottom-0')
     .append('g');
 
   const createChartView = (key: string, index: number) => {
@@ -305,7 +207,7 @@ async function renderView({ width, setMarkLineList, chartStore }) {
               .attr('stroke-width', '1');
           }
 
-          if (data[endIndex] && data[endIndex]['Channel 0']) {
+          if (data[endIndex] && data[endIndex]['Channel 0'] !== undefined) {
             const nextIndex = getArrIndex(
               data,
               endIndex,
@@ -372,6 +274,14 @@ async function renderView({ width, setMarkLineList, chartStore }) {
   };
   const update = () => {
     axisXView.call(axisX());
+    gridView.call(
+      d3
+        .axisBottom(currentScale)
+        .tickFormat(() => '')
+        .tickSizeInner(9999)
+    );
+    gridView.select('.domain').remove();
+
     chartViewList.forEach((chartViewItem) => {
       chartViewItem.update();
     });
@@ -403,7 +313,8 @@ async function renderView({ width, setMarkLineList, chartStore }) {
     updateRange();
   };
   const init = () => {
-    const list = Array.from({ length: 5 }, (_, index) => {
+    // TODO:mock data
+    const list = Array.from({ length: 10 }, (_, index) => {
       const temp = createChartView('Channel 0', index);
       temp.update();
       return temp;
@@ -465,15 +376,25 @@ const ChartRenderView: React.FC<{
   chartStore: ChartStore;
 }> = observer(({ setMarkLineList, chartStore }) => {
   const ref = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(0);
   useMount(() => {
     const wrapper = ref.current;
+    setHeight(wrapper.clientHeight);
     if (wrapper) {
-      renderView({ width: wrapper.clientWidth, setMarkLineList, chartStore })
+      renderView({
+        width: wrapper.clientWidth,
+        setMarkLineList,
+        chartStore,
+      })
         .then()
         .catch();
     }
   });
-  return <div ref={ref} id="svg" />;
+  return (
+    <div ref={ref} id="svg-container" className="h-full">
+      <div style={{ height }} className="relative overflow-scroll" id="svg" />
+    </div>
+  );
 });
 const ChartMainView: React.FC = () => {
   const [markLineList, setMarkLineList] = useState<
@@ -484,12 +405,12 @@ const ChartMainView: React.FC = () => {
   >([]);
 
   return (
-    <div className="flex-1 relative">
+    <div className="flex-1 relative overflow-scroll">
       {markLineList.map((item) => {
         return (
           <div
             key={item.start}
-            className="absolute h-full bg-red-900 left-0 w-px"
+            className="absolute h-full bg-red-900 left-0 w-px "
             style={{ left: `${item.start}px` }}
           />
         );
