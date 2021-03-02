@@ -12,28 +12,53 @@ import {
   getDigit,
   secondFormat,
 } from '../../utils/axis';
+import { DropTargetMonitor, useDrop } from 'react-dnd';
 
-async function renderView({ width, setMarkLineList, chartStore }) {
+interface RenderViewConfig {
+  width: number;
+  setMarkLineList: any;
+  chartStore: any;
+  chartHeight: number;
+  brushMinWidth: number;
+  brushHeight: number;
+  data: any;
+  xKey: Array<string>;
+  yKey: string;
+  lineColors: Array<string>;
+}
+
+async function renderView(config: RenderViewConfig) {
+  const {
+    width,
+    setMarkLineList,
+    chartStore,
+    chartHeight,
+    brushMinWidth,
+    brushHeight,
+    data,
+    xKey,
+    yKey,
+    lineColors,
+  } = config;
   // 基本配置
-  const chartHeight = 100;
   let zoomToPxSecond = 1 / width;
-  let chartInfoLeftWidth = 100;
-  let chartWidth = width - chartInfoLeftWidth;
 
-  const brushMinWidth = 30;
-  const brushHeight = 30;
-  const data = await getDataCVS();
+  // const brushMinWidth = 30;
+  // const brushHeight = 30;
   let currentRangeList: Array<any> = [];
   let chartViewList: Array<{ view: any; update: any }> = [];
   const xscale = d3
     .scaleLinear()
     .range([0, width])
-    .domain([data[0]['Time [s]'], data[data.length - 1]['Time [s]']]);
+    .domain([data[0][yKey], data[data.length - 1][yKey]]);
   const maxAxisX = xscale
     .domain()
     .map(Math.abs)
     .reduce((a, b) => a + b);
-  const yscale = d3.scaleLinear().range([0, chartHeight]).domain([0, 1]);
+  const yscale = d3
+    .scaleLinear()
+    .range([0, chartHeight - 20])
+    .domain([0, 1]);
   let currentScale = xscale;
   const zoomToPx = {
     value: (secondFormat(1, 's', 'ms') / width) * 100,
@@ -95,12 +120,12 @@ async function renderView({ width, setMarkLineList, chartStore }) {
     .attr('width', width)
     .attr('height', 20);
   const gridView = d3
-    .select('#svg-container')
+    .select('#svg')
     .append('svg')
     .attr('class', 'absolute top-0')
     .attr('style', 'z-index:-999')
     .attr('width', width)
-    .attr('height', 900);
+    .attr('height', chartHeight * xKey.length);
   const chartView = d3.select('#svg').append('div');
   const brushView = mainView
     .append('svg')
@@ -124,7 +149,6 @@ async function renderView({ width, setMarkLineList, chartStore }) {
 
     const chartViewLine = chartView
       .append('svg')
-      .attr('class', 'mt-3')
       .attr('width', width)
       .attr('height', chartHeight);
 
@@ -135,7 +159,7 @@ async function renderView({ width, setMarkLineList, chartStore }) {
       .line<any>()
       .curve(d3.curveStepBefore)
       .defined((d) => !Number.isNaN(d.value))
-      .x((d) => currentScale(d['Time [s]']))
+      .x((d) => currentScale(d[yKey]))
       .y((d) => yscale(d[key]));
     chartViewLine
       .on('click', (event) => {
@@ -174,51 +198,51 @@ async function renderView({ width, setMarkLineList, chartStore }) {
         }
       })
       .on('mousemove', (event) => {
-        const { clientX } = event;
+        const { offsetX } = event;
         if (brushIng.state) {
-          brushIng.rect.attr('width', clientX - brushIng.start);
+          brushIng.rect.attr('width', offsetX - brushIng.start);
         } else {
           // 展示当前坐标属性
           const bisectDate = d3.bisector((d) => {
-            return d['Time [s]'];
+            return d[yKey];
           }).right;
-          const index = bisectDate(data, currentScale.invert(clientX));
+          const index = bisectDate(data, currentScale.invert(offsetX));
           const startIndex = getArrIndex(
             data,
             index,
-            data[index]['Channel 0'] === 1 ? 0 : 1,
-            (value) => value['Channel 0'],
+            data[index][key] === 1 ? 0 : 1,
+            (value) => value[key],
             'left'
           );
           const endIndex = getArrIndex(
             data,
             index,
-            data[index]['Channel 0'] === 1 ? 0 : 1,
-            (value) => value['Channel 0'],
+            data[index][key] === 1 ? 0 : 1,
+            (value) => value[key],
             'right'
           );
           if (data[endIndex - 1]) {
             currentPeriodLine
-              .attr('x1', currentScale(data[startIndex]['Time [s]']))
+              .attr('x1', currentScale(data[startIndex][yKey]))
               .attr('y1', '10')
-              .attr('x2', currentScale(data[endIndex - 1]['Time [s]']))
+              .attr('x2', currentScale(data[endIndex - 1][yKey]))
               .attr('y2', '10')
               .attr('stroke', 'black')
               .attr('stroke-width', '1');
           }
 
-          if (data[endIndex] && data[endIndex]['Channel 0'] !== undefined) {
+          if (data[endIndex] && data[endIndex][key] !== undefined) {
             const nextIndex = getArrIndex(
               data,
               endIndex,
-              data[endIndex]['Channel 0'] === 1 ? 0 : 1,
-              (value) => value['Channel 0'],
+              data[endIndex][key] === 1 ? 0 : 1,
+              (value) => value[key],
               'right'
             );
             currentNextPeriodLine
-              .attr('x1', currentScale(data[startIndex]['Time [s]']))
+              .attr('x1', currentScale(data[startIndex][yKey]))
               .attr('y1', '40')
-              .attr('x2', currentScale(data[nextIndex - 1]['Time [s]']))
+              .attr('x2', currentScale(data[nextIndex - 1][yKey]))
               .attr('y2', '40')
               .attr('stroke', 'black')
               .attr('stroke-width', '1');
@@ -235,7 +259,7 @@ async function renderView({ width, setMarkLineList, chartStore }) {
       .append('path')
       .datum(data)
       .attr('fill', 'none')
-      .attr('stroke', 'steelblue')
+      .attr('stroke', lineColors[index])
       .attr('stroke-width', 1)
       .attr('stroke-linejoin', 'round')
       .attr('stroke-linecap', 'round');
@@ -308,18 +332,15 @@ async function renderView({ width, setMarkLineList, chartStore }) {
         brushView.call(brush.move, [currentBrush[0], currentBrush[1]]);
       }
     }
-
     updateMark();
     updateRange();
   };
   const init = () => {
-    // TODO:mock data
-    const list = Array.from({ length: 10 }, (_, index) => {
-      const temp = createChartView('Channel 0', index);
+    chartViewList = xKey.map((key, index) => {
+      const temp = createChartView(key, index);
       temp.update();
       return temp;
     });
-    chartViewList = list;
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     axisXView = axisXView
@@ -377,25 +398,137 @@ const ChartRenderView: React.FC<{
 }> = observer(({ setMarkLineList, chartStore }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(0);
-  useMount(() => {
+  const [barWidth, setBarWidth] = useState(100);
+  const [chartWidth, setChartWidth] = useState(0);
+  const xkeys = [
+    'Channel 0',
+    'Channel 1',
+    'Channel 0',
+    'Channel 1',
+    'Channel 0',
+    'Channel 1',
+    'Channel 0',
+    'Channel 1',
+    'Channel 0',
+    'Channel 1',
+    'Channel 0',
+    'Channel 1',
+    'Channel 0',
+    'Channel 1',
+  ];
+  useMount(async () => {
     const wrapper = ref.current;
-    setHeight(wrapper.clientHeight);
+    const data = await getDataCVS();
+
     if (wrapper) {
+      setHeight(wrapper.clientHeight);
+      setChartWidth(barWidth - wrapper.clientWidth);
       renderView({
-        width: wrapper.clientWidth,
+        width: wrapper.clientWidth - barWidth,
         setMarkLineList,
         chartStore,
+        data,
+        chartHeight: 100,
+        brushHeight: 30,
+        brushMinWidth: 30,
+        xKey: xkeys,
+        yKey: 'Time [s]',
+        lineColors: [...d3.schemeCategory10],
       })
         .then()
         .catch();
     }
   });
+
+  const [{ handlerId }, drop] = useDrop({
+    accept: ItemTypes.CARD,
+    collect(monitor) {
+      return {
+        handlerId: monitor.getHandlerId(),
+      }
+    },
+    hover(item, monitor: DropTargetMonitor) {
+      if (!ref.current) {
+        return
+      }
+      const dragIndex = item.index
+      const hoverIndex = index
+
+      // Don't replace items with themselves
+      if (dragIndex === hoverIndex) {
+        return
+      }
+
+      // Determine rectangle on screen
+      const hoverBoundingRect = ref.current?.getBoundingClientRect()
+
+      // Get vertical middle
+      const hoverMiddleY =
+        (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2
+
+      // Determine mouse position
+      const clientOffset = monitor.getClientOffset()
+
+      // Get pixels to the top
+      const hoverClientY = (clientOffset as XYCoord).y - hoverBoundingRect.top
+
+      // Only perform the move when the mouse has crossed half of the items height
+      // When dragging downwards, only move when the cursor is below 50%
+      // When dragging upwards, only move when the cursor is above 50%
+
+      // Dragging downwards
+      if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) {
+        return
+      }
+
+      // Dragging upwards
+      if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) {
+        return
+      }
+
+      // Time to actually perform the action
+      moveCard(dragIndex, hoverIndex)
+
+      // Note: we're mutating the monitor item here!
+      // Generally it's better to avoid mutations,
+      // but it's good here for the sake of performance
+      // to avoid expensive index searches.
+      item.index = hoverIndex
+    },
+  })
+
+  const [{ isDragging }, drag] = useDrag({
+    item: { type: ItemTypes.CARD, id, index },
+    collect: (monitor: any) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  })
+
+
   return (
-    <div ref={ref} id="svg-container" className="h-full">
-      <div style={{ height }} className="relative overflow-scroll" id="svg" />
+    <div ref={ref} id="svg-container" className="h-full overflow-scroll flex">
+      <div style={{ width: '100px', height }}>
+        <div className="bg-gray-300 border-b" style={{ height: '20px' }} />
+        {xkeys.map((key, index) => {
+          return (
+            <div
+              key={key}
+              className="flex justify-center items-center bg-gray-300 text-sm"
+              style={{
+                height: '100px',
+                borderLeft: `5px solid ${d3.schemeCategory10[index]}`,
+              }}
+            >
+              {key}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ height }} className="relative" id="svg" />
     </div>
   );
 });
+
 const ChartMainView: React.FC = () => {
   const [markLineList, setMarkLineList] = useState<
     Array<{
